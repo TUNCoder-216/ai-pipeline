@@ -4,26 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="5f2f543d-2559-470c-9575-8c3e00b22523" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.github/workflows/ci-cd.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/PythonProject.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/dockerfile.spark" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/requirements-api.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/api.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/model.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/processing.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_api.py" afterDir="false" />
-    </list>
+    <list default="true" id="5f2f543d-2559-470c-9575-8c3e00b22523" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -82,7 +63,7 @@
       <option name="presentableId" value="Default" />
       <updated>1771904856738</updated>
       <workItem from="1771904857760" duration="11312000" />
-      <workItem from="1771996189492" duration="47950000" />
+      <workItem from="1771996189492" duration="48439000" />
     </task>
     <servers />
   </component>
