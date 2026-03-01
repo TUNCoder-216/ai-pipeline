@@ -1,0 +1,79 @@
+# =============================================================
+#  Dockerfile — FastAPI Inference Server
+#  Multi-stage build: keeps the final image lean
+# =============================================================
+
+# ── Stage 1: builder — install deps in a clean layer ─────────────────────────
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+# Install build tools (needed to compile some packages)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy and install Python deps
+# We do this BEFORE copying source code so Docker can cache this layer.
+# If only .py files change, pip install is skipped on rebuild.
+COPY requirements-api.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements-api.txt
+
+# ── Stage 2: model-cache — pre-download the model weights ────────────────────
+# This stage runs during CI/CD so the production container
+# never needs to hit HuggingFace Hub at runtime.
+FROM python:3.12-slim AS model-downloader
+
+COPY --from=builder /install /usr/local
+COPY src/model.py /tmp/model.py
+
+RUN python -c "
+from transformers import pipeline
+import os
+MODEL_ID = os.getenv('MODEL_ID', 'distilbert-base-uncased-finetuned-sst-2-english')
+print(f'Downloading {MODEL_ID} …')
+pipeline('sentiment-analysis', model=MODEL_ID, cache_dir='/model_cache')
+print('Done.')
+"
+
+# ── Stage 3: final runtime image ─────────────────────────────────────────────
+FROM python:3.12-slim AS runtime
+
+# Security: don't run as root
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /app
+
+# Copy installed packages from builder
+COPY --from=builder /install /usr/local
+
+# Copy pre-downloaded model weights (no network needed at runtime!)
+COPY --from=model-downloader /model_cache /model_cache
+
+# Copy source code
+COPY src/ ./src/
+COPY --chown=appuser:appuser . .
+
+# Tell the model wrapper where the cache is
+ENV MODEL_CACHE_DIR=/model_cache
+ENV PORT=8000
+ENV APP_VERSION=1.0.0
+
+# Switch to non-root user
+USER appuser
+
+EXPOSE 8000
+
+# Health check — AWS ALB / ECS uses this to decide if the task is healthy
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+
+# Production server: Gunicorn with Uvicorn workers
+# 2 workers per CPU core is a good starting point
+CMD ["gunicorn", "src.api:app", \
+     "--workers", "2", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:8000", \
+     "--timeout", "120", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-"]

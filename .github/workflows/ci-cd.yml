@@ -1,0 +1,252 @@
+# =============================================================
+#  .github/workflows/ci-cd.yml
+#  Full CI/CD pipeline:
+#    1. Lint & test on every push / PR
+#    2. Build Docker image and push to AWS ECR on merge to main
+#    3. Deploy to AWS ECS Fargate automatically
+# =============================================================
+
+name: CI / CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── Shared env vars ────────────────────────────────────────────────────────────
+env:
+  AWS_REGION:        ${{ vars.eu-west-3 }}          # set in repo → Settings → Variables
+  ECR_REGISTRY:      ${{ vars.920572019791.dkr.ecr.eu-west-3.amazonaws.com }}        # e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPO_API:      sentiment-api
+  ECR_REPO_SPARK:    sentiment-spark
+  ECS_CLUSTER:       ai-pipeline-cluster
+  ECS_SERVICE_API:   sentiment-api-service
+  ECS_TASK_DEF_API:  sentiment-api-task
+  PYTHON_VERSION:    "3.12"                        # use the same Python version across all jobs
+
+# ==============================================================================
+# JOB 1 — Lint & Unit Tests (runs on every push and PR)
+# ==============================================================================
+jobs:
+  test:
+    name: 🧪 Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip                             # cache pip downloads
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-api.txt
+          pip install pytest pytest-asyncio httpx ruff mypy
+
+      - name: Lint with Ruff
+        run: ruff check src/ --output-format=github
+
+      - name: Type-check with mypy
+        run: mypy src/ --ignore-missing-imports --no-strict-optional
+        continue-on-error: true                  # warn but don't fail the build
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+        env:
+          # Use a tiny mock model in tests so we don't download 250MB
+          MODEL_ID: "hf-internal-testing/tiny-random-distilbert"
+          MODEL_CACHE_DIR: /tmp/test_model_cache
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: pytest-results.xml
+          if-no-files-found: ignore
+
+# ==============================================================================
+# JOB 2 — Build & Push Docker images to ECR (only on push to main/develop)
+# ==============================================================================
+  build-and-push:
+    name: 🐳 Build & Push
+    runs-on: ubuntu-latest
+    needs: test                                  # only runs if tests pass
+    if: github.event_name == 'push'
+
+    outputs:
+      api_image_tag:   ${{ steps.meta.outputs.api_tag }}
+      spark_image_tag: ${{ steps.meta.outputs.spark_tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Generate image tags: main → "latest" + git SHA, develop → "staging" + SHA
+      - name: Generate image metadata
+        id: meta
+        run: |
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            ENV_TAG="latest"
+          else
+            ENV_TAG="staging"
+          fi
+          echo "api_tag=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO_API }}:${ENV_TAG}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "spark_tag=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO_SPARK }}:${ENV_TAG}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "env_tag=${ENV_TAG}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Build with layer caching from ECR to speed up CI
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.api_tag }}
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO_API }}:${{ steps.meta.outputs.env_tag }}
+          # Cache layers from the last build in ECR (much faster CI)
+          cache-from: type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO_API }}:cache
+          cache-to:   type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO_API }}:cache,mode=max
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.short_sha }}
+
+      - name: Build & push Spark image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.spark
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.spark_tag }}
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO_SPARK }}:${{ steps.meta.outputs.env_tag }}
+          cache-from: type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO_SPARK }}:cache
+          cache-to:   type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO_SPARK }}:cache,mode=max
+
+      - name: Image security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.api_tag }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+        continue-on-error: true
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+        if: always()
+
+# ==============================================================================
+# JOB 3 — Deploy to ECS Fargate (only on push to main)
+# ==============================================================================
+  deploy:
+    name: 🚀 Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production              # triggers GitHub Environments protection rules
+      url: ${{ steps.get-url.outputs.url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      # Download the current task definition from ECS, patch the image tag, re-register it
+      - name: Download current ECS task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_TASK_DEF_API }} \
+            --query taskDefinition \
+            > task-definition.json
+
+      - name: Update image in task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition:  task-definition.json
+          container-name:   sentiment-api          # must match name in your ECS task def
+          image:            ${{ needs.build-and-push.outputs.api_image_tag }}
+
+      - name: Deploy to ECS Fargate
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service:         ${{ env.ECS_SERVICE_API }}
+          cluster:         ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true     # blocks until new tasks are healthy
+          wait-for-minutes: 10
+
+      - name: Get ALB URL
+        id: get-url
+        run: |
+          URL=$(aws elbv2 describe-load-balancers \
+            --query "LoadBalancers[?contains(LoadBalancerName,'ai-pipeline')].DNSName" \
+            --output text)
+          echo "url=http://${URL}" >> $GITHUB_OUTPUT
+          echo "✅ Deployed to: http://${URL}"
+
+      - name: Smoke test — /health endpoint
+        run: |
+          URL="${{ steps.get-url.outputs.url }}"
+          echo "🔍 Testing ${URL}/health …"
+          # Retry up to 5 times with 15s delay (Fargate task may still be warming up)
+          for i in {1..5}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${URL}/health" || echo "000")
+            if [ "$STATUS" == "200" ]; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i: got ${STATUS}, retrying in 15s …"
+            sleep 15
+          done
+          echo "❌ Health check failed after 5 attempts"
+          exit 1
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **Deployment failed!** Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.'
+            })

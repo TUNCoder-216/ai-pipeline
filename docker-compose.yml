@@ -1,0 +1,71 @@
+# =============================================================
+#  docker-compose.yml — Local Development Stack
+#  Run everything with: docker compose up
+# =============================================================
+
+version: "3.9"
+
+services:
+
+  # ── FastAPI inference server ───────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime            # skip model-downloader stage locally
+    container_name: sentiment-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - APP_VERSION=dev
+      - MODEL_CACHE_DIR=/model_cache
+    volumes:
+      - ./src:/app/src            # hot-reload: changes reflect instantly
+      - model_cache:/model_cache  # persist downloaded model weights
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # ── PySpark batch pipeline ─────────────────────────────────────────────────
+  spark-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: spark-pipeline
+    env_file:
+      - .env
+    environment:
+      - MODEL_CACHE_DIR=/model_cache
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data          # mount local data for testing
+      - model_cache:/model_cache
+    profiles:
+      - pipeline                  # only starts with: docker compose --profile pipeline up
+    restart: "no"                 # batch jobs should exit when done
+
+  # ── LocalStack (fake AWS S3 for local testing) ─────────────────────────────
+  localstack:
+    image: localstack/localstack:3.4
+    container_name: localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3
+      - AWS_DEFAULT_REGION=eu-west-3
+      - PERSISTENCE=1
+    volumes:
+      - localstack_data:/var/lib/localstack
+    profiles:
+      - aws                       # only starts with: docker compose --profile aws up
+
+volumes:
+  model_cache:
+  localstack_data:

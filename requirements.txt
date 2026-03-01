@@ -1,0 +1,21 @@
+
+# =============================================================
+#  requirements-api.txt — FastAPI inference server only
+#  (lighter than the Spark pipeline requirements)
+# =============================================================
+--extra-index-url https://download.pytorch.org/whl/cpu
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+gunicorn==22.0.0
+
+# ── Request validation ────────────────────────────────────────────────────────
+pydantic==2.7.1
+
+# ── ML stack ─────────────────────────────────────────────────────────────────
+transformers==4.40.0
+tokenizers==0.19.1
+torch==2.3.0+cpu
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1
