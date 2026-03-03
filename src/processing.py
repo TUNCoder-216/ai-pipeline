@@ -9,20 +9,14 @@
 import os
 import logging
 
-# ── 1. Standard library & AWS ────────────────────────────────────────────────
-import boto3
-
-# ── 2. PySpark core ──────────────────────────────────────────────────────────
-from pyspark.sql import SparkSession
+# ── 1. PySpark core ───────────────────────────────────────────────────────────
+from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, FloatType, StructType, StructField
 
-# ── 3. Pandas UDF support ────────────────────────────────────────────────────
+# ── 2. Pandas UDF support ────────────────────────────────────────────────────
 import pandas as pd
-from pyspark.sql.functions import pandas_udf, PandasUDFType
-
-# ── 4. HuggingFace ───────────────────────────────────────────────────────────
-from transformers import pipeline
+from pyspark.sql.functions import pandas_udf
 
 # =============================================================================
 # CONFIGURATION  (all secrets come from environment variables — never hardcode!)
@@ -139,7 +133,7 @@ def sentiment_udf(texts: pd.Series) -> pd.DataFrame:
 # STEP 3 — Bronze layer  (ingest raw data)
 # =============================================================================
 
-def read_bronze(spark: SparkSession) -> "pyspark.sql.DataFrame":
+def read_bronze(spark: SparkSession) -> DataFrame:
     """
     Reads raw CSV/JSON reviews from the Bronze S3 path.
     Expects at least a column called `review_text`.
@@ -167,7 +161,7 @@ def read_bronze(spark: SparkSession) -> "pyspark.sql.DataFrame":
 # STEP 4 — Gold layer  (apply AI + write enriched data)
 # =============================================================================
 
-def write_gold(df: "pyspark.sql.DataFrame") -> None:
+def write_gold(df: DataFrame) -> None:
     log.info("🤖  Running sentiment inference on driver …")
 
     import os
