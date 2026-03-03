@@ -21,8 +21,8 @@ concurrency:
 
 # ── Shared env vars ────────────────────────────────────────────────────────────
 env:
-  AWS_REGION:        ${{ vars.eu-west-3 }}          # set in repo → Settings → Variables
-  ECR_REGISTRY:      ${{ vars.920572019791.dkr.ecr.eu-west-3.amazonaws.com }}        # e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}       # e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com
   ECR_REPO_API:      sentiment-api
   ECR_REPO_SPARK:    sentiment-spark
   ECS_CLUSTER:       ai-pipeline-cluster
