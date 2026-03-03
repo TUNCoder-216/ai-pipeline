@@ -5,46 +5,50 @@ Run with: pytest tests/ -v
 
 import pytest
 from fastapi.testclient import TestClient
-
-# ── We patch the model before importing the app ───────────────────────────────
 import unittest.mock as mock
 
-# Mock SentimentModel.get() so tests don't download a real model
+from src.api import app
+
+
 MOCK_RESULT = {
-    "text":       "I love this!",
-    "label":      "POSITIVE",
-    "score":      0.9987,
+    "text": "I love this!",
+    "label": "POSITIVE",
+    "score": 0.9987,
     "latency_ms": 12.3,
 }
 
-with mock.patch("src.model.SentimentModel.get") as mock_get:
-    mock_model = mock.MagicMock()
-    mock_model.predict.return_value = MOCK_RESULT
-    mock_model.model_id = "test-model"
-    mock_model.health.return_value = {"loaded": True, "model_id": "test-model"}
-    mock_get.return_value = mock_model
 
-    from src.api import app
+@pytest.fixture
+def mock_model():
+    with mock.patch("src.model.SentimentModel.get") as mock_get:
+        model = mock.MagicMock()
+        model.predict.return_value = MOCK_RESULT
+        model.model_id = "test-model"
+        model.health.return_value = {"loaded": True, "model_id": "test-model"}
+        mock_get.return_value = model
+        yield model
 
-client = TestClient(app)
+
+@pytest.fixture
+def client(mock_model):
+    with TestClient(app) as test_client:
+        yield test_client
 
 
-# ── Tests ─────────────────────────────────────────────────────────────────────
-
-def test_root():
+def test_root(client):
     response = client.get("/")
     assert response.status_code == 200
     assert "running" in response.json()["message"]
 
 
-def test_health():
+def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
 
 
-def test_predict_positive():
+def test_predict_positive(client):
     response = client.post("/predict", json={"text": "I love this!"})
     assert response.status_code == 200
     data = response.json()
@@ -52,12 +56,12 @@ def test_predict_positive():
     assert 0.0 <= data["result"]["score"] <= 1.0
 
 
-def test_predict_empty_text():
+def test_predict_empty_text(client):
     response = client.post("/predict", json={"text": ""})
-    assert response.status_code == 422   # Pydantic validation error
+    assert response.status_code == 422
 
 
-def test_predict_batch():
+def test_predict_batch(client, mock_model):
     mock_model.predict.return_value = [MOCK_RESULT, MOCK_RESULT]
     response = client.post("/predict/batch", json={"texts": ["Great!", "Terrible."]})
     assert response.status_code == 200
@@ -66,7 +70,7 @@ def test_predict_batch():
     assert len(data["results"]) == 2
 
 
-def test_batch_too_large():
-    texts = ["text"] * 101   # MAX_BATCH = 100
+def test_batch_too_large(client):
+    texts = ["text"] * 101
     response = client.post("/predict/batch", json={"texts": texts})
     assert response.status_code == 422
