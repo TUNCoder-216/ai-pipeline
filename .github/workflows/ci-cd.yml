@@ -59,7 +59,7 @@ jobs:
         run: ruff check src/ --output-format=github
 
       - name: Type-check with mypy
-        run: mypy src/ --ignore-missing-imports --no-strict-optional
+        run: mypy src/ --ignore-missing-imports --no-strict-optional --explicit-package-bases
         continue-on-error: true                  # warn but don't fail the build
 
       - name: Run tests
