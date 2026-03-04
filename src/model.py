@@ -9,7 +9,6 @@
 import os
 import logging
 import time
-from typing import Union
 
 import torch
 from transformers import (
