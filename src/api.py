@@ -193,7 +193,7 @@ def predict_batch(req: BatchPredictRequest):
         total_ms = round((time.perf_counter() - t0) * 1000, 1)
 
         return BatchPredictResponse(
-            results=[SentimentResult(**r) for r in results],
+            results=[SentimentResult(**dict(r)) for r in results],
             count=len(results),
             model_id=model.model_id,
             version=APP_VERSION,
