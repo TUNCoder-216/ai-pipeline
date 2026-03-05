@@ -203,7 +203,7 @@ jobs:
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition:  task-definition.json
-          container-name:   sentiment-api          # must match name in your ECS task def
+          container-name:   first_repo         # must match name in your ECS task def
           image:            ${{ needs.build-and-push.outputs.api_image_tag }}
 
       - name: Deploy to ECS Fargate
