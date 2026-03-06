@@ -3,7 +3,6 @@
 # =============================================================
 FROM python:3.12-slim
 
-# Install Java (required for Spark)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     default-jre-headless \
     && rm -rf /var/lib/apt/lists/*
@@ -22,8 +21,6 @@ RUN pip install --no-cache-dir \
     numpy \
     boto3 \
     python-dotenv
-
-RUN python -c "from transformers import pipeline; pipeline('sentiment-analysis', model='distilbert-base-uncased-finetuned-sst-2-english', cache_dir='/model_cache')"
 
 COPY src/ ./src/
 
