@@ -9,7 +9,6 @@
 import os
 import logging
 import time
-from typing import Union
 
 import torch
 from transformers import (
@@ -98,7 +97,7 @@ class SentimentModel:
         self.load_time_s = round(time.perf_counter() - t0, 2)
         log.info(f"✅  Model loaded in {self.load_time_s}s")
     # ── Inference ─────────────────────────────────────────────────────────────
-    def predict(self, texts: Union[str, list[str]]) -> list[dict]:
+    def predict(self, texts):
         """
         Run inference on one or more texts.
 
@@ -113,6 +112,7 @@ class SentimentModel:
 
         # Normalise to list
         single = isinstance(texts, str)
+        texts = [texts] if single else list(texts)
         if single:
             texts = [texts]
 

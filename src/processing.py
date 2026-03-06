@@ -84,6 +84,9 @@ def create_spark_session() -> SparkSession:
     return spark
 
 
+# Global model cache for Pandas UDF workers
+_sentiment_pipeline = None
+
 # =============================================================================
 # STEP 2 — The Pandas UDF  (the "Pro" magic)
 # =============================================================================

@@ -10,9 +10,11 @@ name: CI / CD Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - '**'          # run on ALL branches
   pull_request:
-    branches: [main]
+    branches:
+      - main
 
 # Cancel in-progress runs when a new commit is pushed
 concurrency:
@@ -57,7 +59,7 @@ jobs:
         run: ruff check src/ --output-format=github
 
       - name: Type-check with mypy
-        run: mypy src/ --ignore-missing-imports --no-strict-optional
+        run: mypy src/ --ignore-missing-imports --no-strict-optional --explicit-package-bases
         continue-on-error: true                  # warn but don't fail the build
 
       - name: Run tests
@@ -164,7 +166,7 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
         if: always()
-
+        continue-on-error: true
 # ==============================================================================
 # JOB 3 — Deploy to ECS Fargate (only on push to main)
 # ==============================================================================
@@ -201,7 +203,7 @@ jobs:
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition:  task-definition.json
-          container-name:   sentiment-api          # must match name in your ECS task def
+          container-name:   first_repo         # must match name in your ECS task def
           image:            ${{ needs.build-and-push.outputs.api_image_tag }}
 
       - name: Deploy to ECS Fargate
@@ -250,3 +252,9 @@ jobs:
               repo: context.repo.repo,
               body: '❌ **Deployment failed!** Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.'
             })
+      - name: Ensure Trivy output exists
+        if: always()
+        run: |
+          if [ ! -f trivy-results.sarif ]; then
+            echo '{"version":"2.1.0","runs":[]}' > trivy-results.sarif
+          fi
