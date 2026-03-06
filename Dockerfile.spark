@@ -2,7 +2,7 @@
 #  Dockerfile.spark — PySpark Batch Pipeline
 #  Java 11 base (Spark requires Java)
 # =============================================================
-FROM eclipse-temurin:11-jre-jammy AS runtime
+FROM eclipse-temurin:11-jre-noble AS runtime
 
 # Install Python 3.11
 RUN apt-get update && apt-get install -y --no-install-recommends \

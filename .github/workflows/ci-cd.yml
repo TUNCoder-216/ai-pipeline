@@ -155,17 +155,9 @@ jobs:
       - name: Image security scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ steps.meta.outputs.api_tag }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
-        continue-on-error: true
-
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
-        if: always()
+            image-ref: ${{ steps.meta.outputs.api_tag }}
+            format: table
+            severity: CRITICAL,HIGH
         continue-on-error: true
 # ==============================================================================
 # JOB 3 — Deploy to ECS Fargate (only on push to main)
